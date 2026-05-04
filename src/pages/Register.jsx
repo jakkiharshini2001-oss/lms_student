@@ -1,10 +1,11 @@
 import React, { useState } from 'react';
-import { Link } from 'react-router-dom';
+import { Link, useNavigate } from 'react-router-dom';
 import { BookOpen, User, Mail, CreditCard, Lock, Building, Calendar, ArrowRight } from 'lucide-react';
 import hero3d from '../assets/hero-3d.png';
 import { supabase } from '../lib/supabase';
 
 const Register = () => {
+  const navigate = useNavigate();
   const [formData, setFormData] = useState({
     fullName: '',
     email: '',
@@ -35,46 +36,69 @@ const Register = () => {
     "Physical Education"
   ];
 
-  const handleSubmit = async (e) => {
-    e.preventDefault();
-    setIsLoading(true);
-    setErrorMsg('');
-    setSuccessMsg('');
+ const handleSubmit = async (e) => {
+  e.preventDefault();
+  setIsLoading(true);
+  setErrorMsg('');
+  setSuccessMsg('');
 
-    try {
-      // 1. Sign up user via Supabase Auth
-      const { data: authData, error: authError } = await supabase.auth.signUp({
-        email: formData.email,
-        password: formData.password,
-        options: {
-          data: {
-            role: 'student',
-            full_name: formData.fullName,
-            hall_ticket: formData.hallTicket,
-            department: formData.department,
-            course: formData.course,
-            year: formData.year,
-            semester: formData.semester
-          }
+  try {
+    // 1. SIGNUP
+    const { data: authData, error: authError } = await supabase.auth.signUp({
+      email: formData.email.trim().toLowerCase(),
+      password: formData.password,
+      options: {
+        data: {
+          full_name: formData.fullName,
         }
-      });
+      }
+    });
 
-      if (authError) throw authError;
+    if (authError) throw authError;
 
-      // Registration successful! 
-      // Supabase by default requires email verification.
-      setSuccessMsg('Registration successful! Please check your email to verify your account.');
-      
-      // Optional: If you have a 'profiles' or 'students' table, you can insert the extra data here.
-      // But adding it to the `options.data` user metadata (like above) is perfectly fine to start.
+    const user = authData?.user;
+    if (!user) throw new Error("User not created");
 
-    } catch (error) {
-      console.error('Registration failed:', error.message);
-      setErrorMsg(error.message || 'An error occurred during registration.');
-    } finally {
-      setIsLoading(false);
+    // ✅ 2. CONVERT SEMESTER STRING → INTEGER
+    let semesterNumber = 1;
+
+    if (formData.year === "1") {
+      semesterNumber = 1; // 1-1
+    } else {
+      const semPart = formData.semester.split("-")[1]; // "2-1" → "1"
+      semesterNumber = (parseInt(formData.year) - 1) * 2 + parseInt(semPart);
     }
-  };
+
+    // 3. INSERT INTO students TABLE
+    const { error: dbError } = await supabase.from("students").insert([
+      {
+        id: user.id,
+        full_name: formData.fullName,
+        email: formData.email.trim().toLowerCase(),
+        hall_ticket: formData.hallTicket,
+        course: formData.course,
+        department: formData.department,
+        year: parseInt(formData.year),
+        semester: semesterNumber, // ✅ FIXED
+      },
+    ]);
+
+    if (dbError) throw dbError;
+
+    // 4. SUCCESS
+    setSuccessMsg("Registration successful! Redirecting to login...");
+
+    setTimeout(() => {
+      navigate("/login");
+    }, 2000);
+
+  } catch (error) {
+    console.error("Registration failed:", error.message);
+    setErrorMsg(error.message || "Registration failed");
+  } finally {
+    setIsLoading(false);
+  }
+};
 
   return (
     <div className="min-h-screen flex">

@@ -21,11 +21,18 @@ const Assignments = () => {
   // ---------------- GET USER ----------------
   useEffect(() => {
     const loadUser = async () => {
-      const { data } = await supabase.auth.getUser();
-      if (data?.user) {
-        setStudent(data.user);
-      }
-    };
+  const { data: authData } = await supabase.auth.getUser();
+
+  if (authData?.user) {
+    const { data: studentData } = await supabase
+      .from("students")
+      .select("*")
+      .eq("id", authData.user.id)
+      .single();
+
+    setStudent(studentData);
+  }
+};
     loadUser();
   }, []);
 
