@@ -54,13 +54,12 @@ function App() {
           <Route index element={<Overview />} />
           <Route path="materials" element={<MyMaterials />} />
           <Route path="assignments" element={<Assignments />} />
+          <Route path="assignments/:id" element={<Assignments />} />
           <Route path="quiz" element={<MyQuiz />} />
           <Route path="saved" element={<SavedMaterials />} />
           <Route path="rewards" element={<Rewards />} />
           <Route path="notifications" element={<Notifications />} />
           <Route path="settings" element={<Settings />} />
-          <Route path="/dashboard/assignments" element={<Assignments />} />
-          <Route path="/dashboard/assignments/:id" element={<Assignments />} />
         </Route>
 
       </Routes>

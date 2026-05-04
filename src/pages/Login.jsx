@@ -28,6 +28,20 @@ const Login = () => {
 
       if (error) throw error;
 
+      // Check if student profile exists
+      const { data: profile, error: profileError } = await supabase
+        .from('students')
+        .select('id')
+        .eq('id', data.user.id)
+        .single();
+
+      if (profileError || !profile) {
+        setErrorMsg('Your student profile is not set up. Please contact administrator or try registering again.');
+        // Sign out the user since profile doesn't exist
+        await supabase.auth.signOut();
+        return;
+      }
+
       // Login successful, redirect to dashboard
       navigate('/dashboard');
     } catch (error) {
