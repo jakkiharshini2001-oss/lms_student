@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from "react";
 import { useParams, useNavigate } from "react-router-dom";
 import { supabase } from "../../../lib/supabase";
+
 const API = import.meta.env.VITE_API_BASE_URL.replace(/\/$/, "");
 
 const Assignments = () => {
@@ -8,7 +9,6 @@ const Assignments = () => {
   const navigate = useNavigate();
 
   const [student, setStudent] = useState(null);
-
   const [loading, setLoading] = useState(true);
   const [attemptLoading, setAttemptLoading] = useState(false);
 
@@ -18,35 +18,62 @@ const Assignments = () => {
   const [result, setResult] = useState(null);
   const [attempt, setAttempt] = useState(null);
 
-  // ---------------- GET USER ----------------
+  // ================= GET USER =================
   useEffect(() => {
     const loadUser = async () => {
-  const { data: authData } = await supabase.auth.getUser();
+      try {
+        const { data: authData } = await supabase.auth.getUser();
 
-  if (authData?.user) {
-    const { data: studentData } = await supabase
-      .from("students")
-      .select("*")
-      .eq("id", authData.user.id)
-      .single();
+        if (!authData?.user) return;
 
-    setStudent(studentData);
-  }
-};
+        const { data: studentData, error } = await supabase
+          .from("students")
+          .select("*")
+          .eq("id", authData.user.id)
+          .maybeSingle(); // ✅ FIXED
+
+        if (error) {
+          console.error("Student fetch error:", error);
+          return;
+        }
+
+        if (!studentData) {
+          console.warn("⚠️ Student not found in DB");
+          return;
+        }
+
+        console.log("✅ Student:", studentData);
+
+        setStudent(studentData);
+      } catch (err) {
+        console.error("User load error:", err);
+      }
+    };
+
     loadUser();
   }, []);
 
-  // ---------------- LOAD ASSIGNMENTS ----------------
+  // ================= LOAD ASSIGNMENTS =================
   useEffect(() => {
     if (!student?.id) return;
 
     const loadAssignments = async () => {
       setLoading(true);
+
       try {
+        console.log("📡 Fetching assignments for:", student.id);
+
         const res = await fetch(`${API}/assignments/${student.id}`);
-        if (!res.ok) throw new Error("Failed to fetch");
+
+        if (!res.ok) {
+          console.error("❌ API ERROR:", res.status);
+          throw new Error("Failed");
+        }
 
         const data = await res.json();
+
+        console.log("📦 Assignments:", data);
+
         setAssignments(Array.isArray(data) ? data : []);
       } catch (err) {
         console.error("Assignments error:", err);
@@ -59,7 +86,7 @@ const Assignments = () => {
     loadAssignments();
   }, [student?.id]);
 
-  // ---------------- LOAD QUESTIONS + ATTEMPT ----------------
+  // ================= LOAD QUIZ =================
   useEffect(() => {
     if (!id || !student?.id) return;
 
@@ -67,7 +94,6 @@ const Assignments = () => {
       setAttemptLoading(true);
 
       try {
-        // ✅ CHECK CACHE FIRST
         const cached = localStorage.getItem(`attempt_${id}`);
         if (cached) {
           const parsed = JSON.parse(cached);
@@ -84,7 +110,6 @@ const Assignments = () => {
           return;
         }
 
-        // ✅ FETCH BOTH
         const [qRes, aRes] = await Promise.all([
           fetch(`${API}/assessment/${id}`),
           fetch(`${API}/attempt/${id}/${student.id}`),
@@ -116,7 +141,7 @@ const Assignments = () => {
     loadData();
   }, [id, student?.id]);
 
-  // ---------------- SELECT ----------------
+  // ================= SELECT =================
   const handleSelect = (qid, option) => {
     if (attempt) return;
 
@@ -126,7 +151,7 @@ const Assignments = () => {
     }));
   };
 
-  // ---------------- SUBMIT ----------------
+  // ================= SUBMIT =================
   const handleSubmit = async () => {
     if (!student) return;
 
@@ -136,7 +161,7 @@ const Assignments = () => {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           student_id: student.id,
-          answers: answers,
+          answers,
         }),
       });
 
@@ -167,22 +192,13 @@ const Assignments = () => {
     }
   };
 
-  // ---------------- PROGRESS ----------------
-  const progress =
-    questions.length > 0
-      ? Math.round((Object.keys(answers).length / questions.length) * 100)
-      : 0;
+  // ================= UI =================
+  if (loading) return <h2 style={{ padding: 20 }}>Loading assignments...</h2>;
 
-  // ---------------- LOADING ----------------
-  if (loading) {
-    return <h2 style={{ padding: 20 }}>Loading assignments...</h2>;
-  }
-
-  if (!Array.isArray(assignments) || assignments.length === 0) {
+  if (!assignments.length)
     return <h3 style={{ padding: 20 }}>No assignments found</h3>;
-  }
 
-  // ---------------- LIST ----------------
+  // ================= LIST =================
   if (!id) {
     return (
       <div style={{ padding: 20 }}>
@@ -195,27 +211,25 @@ const Assignments = () => {
           return (
             <div
               key={a.id}
+              onClick={() => navigate(`/dashboard/assignments/${a.id}`)}
               style={{
                 border: "1px solid #ddd",
                 padding: 16,
                 marginBottom: 12,
                 borderRadius: 10,
                 cursor: "pointer",
-                background: "#fff",
-                transition: "0.2s",
               }}
-              onClick={() => navigate(`/dashboard/assignments/${a.id}`)}
             >
               <h3>{a.title}</h3>
               <p>{a.subject}</p>
 
               {parsed ? (
-                <div>
+                <>
                   <span style={{ color: "green" }}>✅ Completed</span>
                   <p>
                     Score: {parsed.score} / {parsed.total}
                   </p>
-                </div>
+                </>
               ) : (
                 <span>Not Attempted</span>
               )}
@@ -226,36 +240,16 @@ const Assignments = () => {
     );
   }
 
-  // ---------------- ATTEMPT LOADING ----------------
-  if (attemptLoading) {
+  // ================= QUIZ =================
+  if (attemptLoading)
     return <h2 style={{ padding: 20 }}>Loading quiz...</h2>;
-  }
 
-  // ---------------- EMPTY ----------------
- if (!attemptLoading && questions.length === 0 && !attempt) {
-  return <h2 style={{ padding: 20 }}>No questions available</h2>;
-}
+  if (!questions.length && !attempt)
+    return <h2 style={{ padding: 20 }}>No questions available</h2>;
 
-  // ---------------- QUIZ ----------------
   return (
-    <div
-      style={{
-        padding: 20,
-        animation: "fadeIn 0.3s ease",
-      }}
-    >
+    <div style={{ padding: 20 }}>
       <h2>Quiz</h2>
-
-      {/* PROGRESS */}
-      <div style={{ height: 10, background: "#eee", marginBottom: 20 }}>
-        <div
-          style={{
-            width: `${progress}%`,
-            height: "100%",
-            background: "#4CAF50",
-          }}
-        />
-      </div>
 
       {questions.map((q, index) => {
         const userAns = answers[q.id];
@@ -263,15 +257,12 @@ const Assignments = () => {
 
         return (
           <div key={q.id} style={{ marginBottom: 15 }}>
-            <h4>
-              {index + 1}. {q.question}
-            </h4>
+            <h4>{index + 1}. {q.question}</h4>
 
             {["A", "B", "C", "D"].map((opt) => {
               const value = q[`option_${opt.toLowerCase()}`];
 
               let bg = "#f5f5f5";
-
               if (attempt) {
                 if (correct === opt) bg = "#c8f7c5";
                 else if (userAns === opt) bg = "#ffcccc";
@@ -294,25 +285,14 @@ const Assignments = () => {
                 </div>
               );
             })}
-
-            {attempt && <p>Correct: {correct}</p>}
           </div>
         );
       })}
 
-      {!attempt && (
-        <button
-          onClick={handleSubmit}
-          disabled={Object.keys(answers).length === 0}
-        >
-          Submit
-        </button>
-      )}
+      {!attempt && <button onClick={handleSubmit}>Submit</button>}
 
       {result && (
-        <h3>
-          Score: {result.score} / {result.total}
-        </h3>
+        <h3>Score: {result.score} / {result.total}</h3>
       )}
     </div>
   );
