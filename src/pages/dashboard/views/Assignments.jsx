@@ -21,32 +21,17 @@ const Assignments = () => {
   // ================= GET USER =================
   useEffect(() => {
     const loadUser = async () => {
-      try {
-        const { data: authData } = await supabase.auth.getUser();
+      const { data: authData } = await supabase.auth.getUser();
+      if (!authData?.user) return;
 
-        if (!authData?.user) return;
+      const { data: studentData } = await supabase
+        .from("students")
+        .select("*")
+        .eq("id", authData.user.id)
+        .maybeSingle();
 
-        const { data: studentData, error } = await supabase
-          .from("students")
-          .select("*")
-          .eq("id", authData.user.id)
-          .maybeSingle(); // ✅ FIXED
-
-        if (error) {
-          console.error("Student fetch error:", error);
-          return;
-        }
-
-        if (!studentData) {
-          console.warn("⚠️ Student not found in DB");
-          return;
-        }
-
-        console.log("✅ Student:", studentData);
-
+      if (studentData) {
         setStudent(studentData);
-      } catch (err) {
-        console.error("User load error:", err);
       }
     };
 
@@ -59,24 +44,13 @@ const Assignments = () => {
 
     const loadAssignments = async () => {
       setLoading(true);
-
       try {
-        console.log("📡 Fetching assignments for:", student.id);
-
         const res = await fetch(`${API}/assignments/${student.id}`);
-
-        if (!res.ok) {
-          console.error("❌ API ERROR:", res.status);
-          throw new Error("Failed");
-        }
-
         const data = await res.json();
-
-        console.log("📦 Assignments:", data);
 
         setAssignments(Array.isArray(data) ? data : []);
       } catch (err) {
-        console.error("Assignments error:", err);
+        console.error(err);
         setAssignments([]);
       } finally {
         setLoading(false);
@@ -94,7 +68,10 @@ const Assignments = () => {
       setAttemptLoading(true);
 
       try {
-        const cached = localStorage.getItem(`attempt_${id}`);
+        const key = `attempt_${student.id}_${id}`;
+
+        // ✅ USER-SPECIFIC CACHE
+        const cached = localStorage.getItem(key);
         if (cached) {
           const parsed = JSON.parse(cached);
 
@@ -110,6 +87,7 @@ const Assignments = () => {
           return;
         }
 
+        // API CALLS
         const [qRes, aRes] = await Promise.all([
           fetch(`${API}/assessment/${id}`),
           fetch(`${API}/attempt/${id}/${student.id}`),
@@ -118,8 +96,22 @@ const Assignments = () => {
         const qData = await qRes.json();
         const aData = await aRes.json();
 
-        setQuestions(Array.isArray(qData) ? qData : []);
+        // ✅ CLEAN QUESTIONS
+        if (Array.isArray(qData)) {
+          const cleaned = qData
+            .filter((q) => q && q.id && q.question)
+            .map((q, index) => ({
+              ...q,
+              id: String(q.id),
+              order: index + 1,
+            }));
 
+          setQuestions(cleaned);
+        } else {
+          setQuestions([]);
+        }
+
+        // EXISTING ATTEMPT
         if (aData && Object.keys(aData).length > 0) {
           setAttempt(aData);
           setAnswers(aData.answers_json || {});
@@ -129,10 +121,10 @@ const Assignments = () => {
             correctAnswers: aData.correct_answers || {},
           });
 
-          localStorage.setItem(`attempt_${id}`, JSON.stringify(aData));
+          localStorage.setItem(key, JSON.stringify(aData));
         }
       } catch (err) {
-        console.error("LOAD ERROR:", err);
+        console.error(err);
       } finally {
         setAttemptLoading(false);
       }
@@ -165,11 +157,6 @@ const Assignments = () => {
         }),
       });
 
-      if (!res.ok) {
-        alert("Submission failed");
-        return;
-      }
-
       const data = await res.json();
 
       const newAttempt = {
@@ -186,26 +173,31 @@ const Assignments = () => {
         correctAnswers: data.correctAnswers,
       });
 
-      localStorage.setItem(`attempt_${id}`, JSON.stringify(newAttempt));
+      localStorage.setItem(
+        `attempt_${student.id}_${id}`,
+        JSON.stringify(newAttempt)
+      );
     } catch (err) {
-      console.error("Submit error:", err);
+      console.error(err);
     }
   };
 
   // ================= UI =================
   if (loading) return <h2 style={{ padding: 20 }}>Loading assignments...</h2>;
 
-  if (!assignments.length)
-    return <h3 style={{ padding: 20 }}>No assignments found</h3>;
-
   // ================= LIST =================
   if (!id) {
+    if (assignments.length === 0)
+      return <h3 style={{ padding: 20 }}>No assignments found</h3>;
+
     return (
       <div style={{ padding: 20 }}>
         <h2>Assignments</h2>
 
         {assignments.map((a) => {
-          const cached = localStorage.getItem(`attempt_${a.id}`);
+          const cached = localStorage.getItem(
+            `attempt_${student?.id}_${a.id}`
+          );
           const parsed = cached ? JSON.parse(cached) : null;
 
           return (
@@ -251,18 +243,22 @@ const Assignments = () => {
     <div style={{ padding: 20 }}>
       <h2>Quiz</h2>
 
-      {questions.map((q, index) => {
+      {questions.map((q) => {
         const userAns = answers[q.id];
         const correct = result?.correctAnswers?.[q.id];
 
         return (
           <div key={q.id} style={{ marginBottom: 15 }}>
-            <h4>{index + 1}. {q.question}</h4>
+            <h4>
+              {q.order}. {q.question}
+            </h4>
 
             {["A", "B", "C", "D"].map((opt) => {
-              const value = q[`option_${opt.toLowerCase()}`];
+              const value =
+                q[`option_${opt.toLowerCase()}`] || "N/A";
 
               let bg = "#f5f5f5";
+
               if (attempt) {
                 if (correct === opt) bg = "#c8f7c5";
                 else if (userAns === opt) bg = "#ffcccc";
@@ -292,7 +288,9 @@ const Assignments = () => {
       {!attempt && <button onClick={handleSubmit}>Submit</button>}
 
       {result && (
-        <h3>Score: {result.score} / {result.total}</h3>
+        <h3>
+          Score: {result.score} / {result.total}
+        </h3>
       )}
     </div>
   );

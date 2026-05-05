@@ -8,7 +8,42 @@ from dotenv import load_dotenv
 from drive_service import download_excel
 from parser import parse_excel
 from cache import get_cached_data, set_cache
+import pandas as pd
 
+def parse_excel(file_stream):
+    try:
+        df = pd.read_excel(file_stream)
+
+        # normalize columns
+        df.columns = [str(c).strip().lower() for c in df.columns]
+
+        print("📊 Columns found:", df.columns)
+
+        questions = []
+
+        for i, row in df.iterrows():
+            question = str(row.get("question", "")).strip()
+
+            if not question or question.lower() == "nan":
+                continue
+
+            questions.append({
+                "id": str(len(questions) + 1),
+                "question": question,
+                "option_a": str(row.get("option_a", "")),
+                "option_b": str(row.get("option_b", "")),
+                "option_c": str(row.get("option_c", "")),
+                "option_d": str(row.get("option_d", "")),
+                "correct": str(row.get("correct", "")).upper()
+            })
+
+        print(f"✅ Total questions parsed: {len(questions)}")
+
+        return questions
+
+    except Exception as e:
+        print("❌ PARSER ERROR:", e)
+        raise e   # ← IMPORTANT (don’t hide error)
 # ---------------- ENV ----------------
 load_dotenv()
 
@@ -129,34 +164,38 @@ def get_assessment(assessment_id: str):
 
         if not cached:
             file_id = get_file_id(assessment_id)
-            try:
-                file_stream = download_excel(file_id)
-                cached = parse_excel(file_stream)
-                set_cache(assessment_id, cached)
-            except Exception:
-                cached = [
-                    {"id": "1", "question": "2+2?", "option_a": "3", "option_b": "4", "option_c": "5", "option_d": "6", "correct": "B"},
-                    {"id": "2", "question": "Capital of France?", "option_a": "London", "option_b": "Paris", "option_c": "Berlin", "option_d": "Madrid", "correct": "B"},
-                ]
-                set_cache(assessment_id, cached)
 
-        cached = sorted(cached, key=lambda x: int(x["id"]))
+            print("📥 Downloading file:", file_id)
 
-        return [
-            {
-                "id": str(q["id"]),
+            file_stream = download_excel(file_id)
+
+            print("📄 File downloaded")
+
+            cached = parse_excel(file_stream)
+
+            print("📊 Parsed questions:", cached)
+
+            if not cached:
+                raise Exception("No questions parsed from Excel")
+
+            set_cache(assessment_id, cached)
+
+        safe = []
+        for i, q in enumerate(cached):
+            safe.append({
+                "id": str(i + 1),
                 "question": q.get("question", ""),
                 "option_a": q.get("option_a", ""),
                 "option_b": q.get("option_b", ""),
                 "option_c": q.get("option_c", ""),
                 "option_d": q.get("option_d", ""),
-            }
-            for q in cached
-        ]
+            })
+
+        return safe
 
     except Exception as e:
-        print("ASSESSMENT ERROR:", e)
-        raise HTTPException(500, "Error loading questions")
+        print("🔥 REAL ERROR:", str(e))   # ← IMPORTANT
+        raise HTTPException(500, f"Error: {str(e)}")
 
 
 # ---------------- SUBMIT ----------------
