@@ -72,3 +72,5 @@ yarl==1.23.0
 zstandard==0.25.0
 pandas
 openpyxl
+google-api-python-client
+google-auth
