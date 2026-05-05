@@ -57,10 +57,15 @@ supabase = create_client(SUPABASE_URL, SUPABASE_KEY)
 
 # ---------------- APP ----------------
 app = FastAPI()
+origins = [
+    "http://localhost:5174",
+    "http://localhost:3000",
+    "https://lms-student-ch346aguv-jakkiharshini2001-7309s-projects.vercel.app/",  # 🔥 replace with your frontend URL
+]
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_origins=origins,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
