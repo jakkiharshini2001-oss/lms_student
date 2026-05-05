@@ -14,14 +14,16 @@ def parse_excel(file_stream):
     try:
         df = pd.read_excel(file_stream)
 
-        # normalize columns
+        # Normalize column names
         df.columns = [str(c).strip().lower() for c in df.columns]
 
-        print("📊 Columns found:", df.columns)
+        print("📊 Columns detected:", df.columns)
 
         questions = []
 
         for i, row in df.iterrows():
+            row = row.to_dict()
+
             question = str(row.get("question", "")).strip()
 
             if not question or question.lower() == "nan":
@@ -30,20 +32,23 @@ def parse_excel(file_stream):
             questions.append({
                 "id": str(len(questions) + 1),
                 "question": question,
-                "option_a": str(row.get("option_a", "")),
-                "option_b": str(row.get("option_b", "")),
-                "option_c": str(row.get("option_c", "")),
-                "option_d": str(row.get("option_d", "")),
-                "correct": str(row.get("correct", "")).upper()
+
+                # 🔥 FIXED COLUMN MAPPING
+                "option_a": str(row.get("option a", "")).strip(),
+                "option_b": str(row.get("option b", "")).strip(),
+                "option_c": str(row.get("option c", "")).strip(),
+                "option_d": str(row.get("option d", "")).strip(),
+
+                "correct": str(row.get("answer", "")).strip().upper()
             })
 
-        print(f"✅ Total questions parsed: {len(questions)}")
+        print(f"✅ Parsed {len(questions)} questions")
 
         return questions
 
     except Exception as e:
         print("❌ PARSER ERROR:", e)
-        raise e   # ← IMPORTANT (don’t hide error)
+        raise e  # ← IMPORTANT (don’t hide error)
 # ---------------- ENV ----------------
 load_dotenv()
 
