@@ -14,32 +14,42 @@ def parse_excel(file_stream):
     try:
         df = pd.read_excel(file_stream)
 
-        # Normalize column names
+        # ✅ Normalize column names
         df.columns = [str(c).strip().lower() for c in df.columns]
 
         print("📊 Columns detected:", df.columns)
+
+        # ✅ CLEAN FUNCTION (KEY FIX)
+        def clean(val):
+            if pd.isna(val):   # handles NaN properly
+                return ""
+            val = str(val).strip()
+            if val.lower() in ["nan", "none"]:
+                return ""
+            return val
 
         questions = []
 
         for i, row in df.iterrows():
             row = row.to_dict()
 
-            question = str(row.get("question", "")).strip()
+            question = clean(row.get("question"))
 
-            if not question or question.lower() == "nan":
+            # Skip empty questions
+            if not question:
                 continue
 
             questions.append({
                 "id": str(len(questions) + 1),
                 "question": question,
 
-                # 🔥 FIXED COLUMN MAPPING
-                "option_a": str(row.get("option a", "")).strip(),
-                "option_b": str(row.get("option b", "")).strip(),
-                "option_c": str(row.get("option c", "")).strip(),
-                "option_d": str(row.get("option d", "")).strip(),
+                # ✅ FIXED OPTIONS (NO "nan" EVER)
+                "option_a": clean(row.get("option a")),
+                "option_b": clean(row.get("option b")),
+                "option_c": clean(row.get("option c")),
+                "option_d": clean(row.get("option d")),
 
-                "correct": str(row.get("answer", "")).strip().upper()
+                "correct": clean(row.get("answer")).upper()
             })
 
         print(f"✅ Parsed {len(questions)} questions")

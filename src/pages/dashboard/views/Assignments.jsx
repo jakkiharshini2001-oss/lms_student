@@ -233,67 +233,78 @@ const Assignments = () => {
   }
 
   // ================= QUIZ =================
-  if (attemptLoading)
-    return <h2 style={{ padding: 20 }}>Loading quiz...</h2>;
+  // ================= QUIZ =================
+if (attemptLoading)
+  return <h2 style={{ padding: 20 }}>Loading quiz...</h2>;
 
-  if (!questions.length && !attempt)
-    return <h2 style={{ padding: 20 }}>No questions available</h2>;
+if (!questions.length && !attempt)
+  return <h2 style={{ padding: 20 }}>No questions available</h2>;
 
-  return (
-    <div style={{ padding: 20 }}>
-      <h2>Quiz</h2>
+return (
+  <div style={{ padding: 20 }}>
+    <h2>Quiz</h2>
 
-      {questions.map((q) => {
-        const userAns = answers[q.id];
-        const correct = result?.correctAnswers?.[q.id];
+    {questions.map((q) => {
+      const userAns = answers[q.id];
+      const correct = result?.correctAnswers?.[q.id];
 
-        return (
-          <div key={q.id} style={{ marginBottom: 15 }}>
-            <h4>
-              {q.order}. {q.question}
-            </h4>
+      return (
+        <div key={q.id} style={{ marginBottom: 15 }}>
+          <h4>
+            {q.order}. {q.question}
+          </h4>
 
-            {["A", "B", "C", "D"].map((opt) => {
-              const value =
-                q[`option_${opt.toLowerCase()}`] || "N/A";
+          {["A", "B", "C", "D"].map((opt) => {
+            const raw = q[`option_${opt.toLowerCase()}`];
 
-              let bg = "#f5f5f5";
+            // ✅ SKIP EMPTY OPTIONS (IMPORTANT)
+            if (
+              !raw ||
+              raw === "nan" ||
+              raw === "undefined" ||
+              raw.toString().trim() === ""
+            ) {
+              return null;
+            }
 
-              if (attempt) {
-                if (correct === opt) bg = "#c8f7c5";
-                else if (userAns === opt) bg = "#ffcccc";
-              } else if (userAns === opt) {
-                bg = "#d0ebff";
-              }
+            let bg = "#f5f5f5";
 
-              return (
-                <div
-                  key={opt}
-                  onClick={() => handleSelect(q.id, opt)}
-                  style={{
-                    padding: 10,
-                    marginTop: 8,
-                    background: bg,
-                    cursor: attempt ? "not-allowed" : "pointer",
-                  }}
-                >
-                  {opt}. {value}
-                </div>
-              );
-            })}
-          </div>
-        );
-      })}
+            if (attempt) {
+              if (correct === opt) bg = "#c8f7c5";
+              else if (userAns === opt) bg = "#ffcccc";
+            } else if (userAns === opt) {
+              bg = "#d0ebff";
+            }
 
-      {!attempt && <button onClick={handleSubmit}>Submit</button>}
+            return (
+              <div
+                key={opt}
+                onClick={() => handleSelect(q.id, opt)}
+                style={{
+                  padding: 10,
+                  marginTop: 8,
+                  background: bg,
+                  cursor: attempt ? "not-allowed" : "pointer",
+                }}
+              >
+                {opt}. {raw}
+              </div>
+            );
+          })}
+        </div>
+      );
+    })}
 
-      {result && (
-        <h3>
-          Score: {result.score} / {result.total}
-        </h3>
-      )}
-    </div>
-  );
+    {!attempt && <button onClick={handleSubmit}>Submit</button>}
+
+    {result && (
+      <h3>
+        Score: {result.score} / {result.total}
+      </h3>
+    )}
+  </div>
+);
+
 };
 
 export default Assignments;

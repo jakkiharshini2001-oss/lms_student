@@ -49,52 +49,77 @@ const toDrivePreview = (url) => {
 };
 
 // ── Video Player ──────────────────────────────────────────────────────────────
+// ── Video Player ──────────────────────────────────────────────────────────────
 const VideoPlayer = ({ lesson }) => {
   if (!lesson) {
     return (
       <div className="w-full aspect-video bg-slate-900 rounded-xl flex items-center justify-center">
-        <p className="text-white/50 text-sm font-medium">Select a video from the curriculum</p>
+        <p className="text-white/50 text-sm font-medium">
+          Select a video from the curriculum
+        </p>
       </div>
     );
   }
 
+  // ✅ PDF VIEW (UPDATED)
   if (lesson.itemType === 'pdf') {
+
+    const fileId = lesson.file_id;
+    const previewUrl = fileId
+      ? `https://drive.google.com/file/d/${fileId}/preview`
+      : lesson.file_url;
+
     return (
-      <div className="w-full aspect-video bg-slate-100 rounded-xl flex flex-col items-center justify-center gap-4 border border-slate-200">
-        <FileText className="w-16 h-16 text-slate-300" />
+      <div className="w-full bg-white rounded-xl p-4 border border-slate-200 shadow-sm flex flex-col gap-4">
+
+        {/* Title */}
         <div className="text-center">
-          <p className="font-bold text-slate-700 mb-1">{lesson.title}</p>
-          <p className="text-sm text-slate-500 mb-4">This is a PDF document</p>
+          <p className="font-bold text-slate-700">{lesson.title}</p>
+          <p className="text-sm text-slate-500">PDF Preview</p>
+        </div>
+
+        {/* ✅ PDF Preview */}
+        <div className="w-full h-[500px] border rounded-lg overflow-hidden">
+          <iframe
+            src={previewUrl}
+            title={lesson.title}
+            className="w-full h-full"
+            allow="autoplay"
+          />
+        </div>
+
+        {/* Buttons */}
+        <div className="flex gap-3 justify-center">
+          
           <a
             href={lesson.file_url}
-            target="_blank"
-            rel="noopener noreferrer"
-            className="inline-flex items-center gap-2 bg-blue-500 hover:bg-blue-600 text-white font-medium px-5 py-2.5 rounded-lg transition-colors"
+            download
+            className="px-4 py-2 bg-gray-200 rounded-lg"
           >
-            <ExternalLink className="w-4 h-4" />
-            Open PDF
+            Download
           </a>
         </div>
       </div>
     );
   }
 
+  // ✅ VIDEO VIEW (UNCHANGED BUT CLEANED)
   if (!lesson.embed_url) {
     return (
       <div className="w-full aspect-video bg-slate-900 rounded-xl flex flex-col items-center justify-center gap-3 text-center px-6">
         <PlayCircle className="w-14 h-14 text-white/30" />
-        <p className="text-white/50 text-sm">No video URL available yet</p>
+        <p className="text-white/50 text-sm">
+          No video URL available yet
+        </p>
       </div>
     );
   }
 
   const driveId = extractDriveFileId(lesson.embed_url);
-  // Adding authuser=0 and using the /preview endpoint helps bypass account-switching loading loops
-  const embedUrl = driveId 
-    ? `https://drive.google.com/file/d/${driveId}/preview?authuser=0` 
-    : lesson.embed_url;
 
-  console.log('🎬 Playing video:', { id: lesson.id, title: lesson.title, url: embedUrl });
+  const embedUrl = driveId
+    ? `https://drive.google.com/file/d/${driveId}/preview?authuser=0`
+    : lesson.embed_url;
 
   return (
     <div className="w-full aspect-video rounded-xl overflow-hidden shadow-2xl border border-slate-200 bg-black">
@@ -110,7 +135,6 @@ const VideoPlayer = ({ lesson }) => {
     </div>
   );
 };
-
 
 // ── Main page ─────────────────────────────────────────────────────────────────
 const SubjectDetail = () => {
