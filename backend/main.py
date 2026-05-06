@@ -2,64 +2,14 @@ from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 from supabase import create_client
-import os
 from dotenv import load_dotenv
+import os
 
 from drive_service import download_excel
 from parser import parse_excel
 from cache import get_cached_data, set_cache
-import pandas as pd
 
-def parse_excel(file_stream):
-    try:
-        df = pd.read_excel(file_stream)
-
-        # ✅ Normalize column names
-        df.columns = [str(c).strip().lower() for c in df.columns]
-
-        print("📊 Columns detected:", df.columns)
-
-        # ✅ CLEAN FUNCTION (KEY FIX)
-        def clean(val):
-            if pd.isna(val):   # handles NaN properly
-                return ""
-            val = str(val).strip()
-            if val.lower() in ["nan", "none"]:
-                return ""
-            return val
-
-        questions = []
-
-        for i, row in df.iterrows():
-            row = row.to_dict()
-
-            question = clean(row.get("question"))
-
-            # Skip empty questions
-            if not question:
-                continue
-
-            questions.append({
-                "id": str(len(questions) + 1),
-                "question": question,
-
-                # ✅ FIXED OPTIONS (NO "nan" EVER)
-                "option_a": clean(row.get("option a")),
-                "option_b": clean(row.get("option b")),
-                "option_c": clean(row.get("option c")),
-                "option_d": clean(row.get("option d")),
-
-                "correct": clean(row.get("answer")).upper()
-            })
-
-        print(f"✅ Parsed {len(questions)} questions")
-
-        return questions
-
-    except Exception as e:
-        print("❌ PARSER ERROR:", e)
-        raise e  # ← IMPORTANT (don’t hide error)
-# ---------------- ENV ----------------
+# ================= ENV =================
 load_dotenv()
 
 SUPABASE_URL = os.getenv("SUPABASE_URL")
@@ -70,69 +20,93 @@ if not SUPABASE_URL or not SUPABASE_KEY:
 
 supabase = create_client(SUPABASE_URL, SUPABASE_KEY)
 
-# ---------------- APP ----------------
+# ================= APP =================
 app = FastAPI()
-origins = [
-    "http://localhost:5174",
-    "http://localhost:3000",
-    "https://lms-student-ch346aguv-jakkiharshini2001-7309s-projects.vercel.app/",  # 🔥 replace with your frontend URL
-]
 
+# ================= CORS =================
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=origins,
+
+    allow_origins=[
+        "http://localhost:5174",
+        "http://localhost:3000",
+
+        # ✅ YOUR VERCEL DOMAIN
+        "https://lms-student-mm45cd8u8-jakkiharshini2001-7309s-projects.vercel.app",
+    ],
+
+    # ✅ ALLOW ALL VERCEL PREVIEWS
+    allow_origin_regex=r"https://.*\.vercel\.app",
+
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
 
-# ---------------- MODEL ----------------
+# ================= MODEL =================
 class Submission(BaseModel):
     student_id: str
     answers: dict
 
 
-# ---------------- STUDENT ----------------
-@app.get("/student/{student_id}")
-def get_student(student_id: str):
-    res = supabase.table("students").select("*").eq("id", student_id).execute()
-    if not res.data:
-        raise HTTPException(404, "Student not found")
-    return res.data[0]
-
-
-# ---------------- HELPERS ----------------
+# ================= HELPERS =================
 def get_file_id(assessment_id: str):
-    res = supabase.table("assessments").select("file_id").eq("id", assessment_id).execute()
+    res = (
+        supabase.table("assessments")
+        .select("file_id")
+        .eq("id", assessment_id)
+        .execute()
+    )
+
     if not res.data:
         raise HTTPException(404, "Assessment not found")
+
     return res.data[0]["file_id"]
 
 
-# ---------------- ASSIGNMENTS (FIXED CORE LOGIC) ----------------
+# ================= STUDENT =================
+@app.get("/student/{student_id}")
+def get_student(student_id: str):
+
+    res = (
+        supabase.table("students")
+        .select("*")
+        .eq("id", student_id)
+        .execute()
+    )
+
+    if not res.data:
+        raise HTTPException(404, "Student not found")
+
+    return res.data[0]
+
+
+# ================= ASSIGNMENTS =================
 @app.get("/assignments/{student_id}")
 def get_assignments(student_id: str):
+
     try:
-        # ================= GET STUDENT =================
-        stu = supabase.table("students") \
-            .select("*") \
-            .eq("id", student_id) \
+
+        # ===== GET STUDENT =====
+        stu = (
+            supabase.table("students")
+            .select("*")
+            .eq("id", student_id)
             .execute()
+        )
 
         if not stu.data:
-            print("❌ Student not found")
             return []
 
         student = stu.data[0]
 
-        # ✅ CLEAN VALUES
-        student_department = str(
-            student.get("department", "")
-        ).strip().lower()
-
-        student_year = int(
-            student.get("year", 0)
+        student_department = (
+            str(student.get("department", ""))
+            .strip()
+            .lower()
         )
+
+        student_year = int(student.get("year", 0))
 
         student_semester = student.get("semester")
 
@@ -143,10 +117,12 @@ def get_assignments(student_id: str):
             student_semester
         )
 
-        # ================= GET ALL ASSESSMENTS =================
-        ass_res = supabase.table("assessments") \
-            .select("*") \
+        # ===== GET ASSESSMENTS =====
+        ass_res = (
+            supabase.table("assessments")
+            .select("*")
             .execute()
+        )
 
         all_assignments = ass_res.data or []
 
@@ -154,38 +130,29 @@ def get_assignments(student_id: str):
 
         filtered = []
 
-        # ================= FILTER =================
         for a in all_assignments:
 
-            ass_department = str(
-                a.get("department", "")
-            ).strip().lower()
+            ass_department = (
+                str(a.get("department", ""))
+                .strip()
+                .lower()
+            )
 
             ass_year = a.get("year")
             ass_semester = a.get("semester")
 
-            # ✅ SAFE YEAR
             ass_year = int(ass_year) if ass_year else None
 
-            print("🔍 CHECKING:")
-            print(
-                ass_department,
-                ass_year,
-                ass_semester
-            )
-
-            # ✅ EXACT DEPARTMENT MATCH
+            # ===== MATCHES =====
             department_match = (
                 ass_department == student_department
             )
 
-            # ✅ YEAR MATCH
             year_match = (
                 ass_year == student_year
             )
 
-            # ✅ SEMESTER MATCH
-            # 1st year can ignore semester
+            # First year semester optional
             if student_year == 1:
                 semester_match = True
             else:
@@ -194,13 +161,6 @@ def get_assignments(student_id: str):
                     or student_semester is None
                     or int(ass_semester) == int(student_semester)
                 )
-
-            print(
-                "MATCH:",
-                department_match,
-                year_match,
-                semester_match
-            )
 
             if (
                 department_match
@@ -211,19 +171,22 @@ def get_assignments(student_id: str):
 
         print(f"✅ FILTERED ASSIGNMENTS: {len(filtered)}")
 
-        # ================= ATTEMPTS =================
-        att_res = supabase.table("student_attempts") \
-            .select("assessment_id, score, total") \
-            .eq("student_id", student_id) \
+        # ===== ATTEMPTS =====
+        att_res = (
+            supabase.table("student_attempts")
+            .select("assessment_id, score, total")
+            .eq("student_id", student_id)
             .execute()
+        )
 
         attempts = {
             a["assessment_id"]: a
             for a in (att_res.data or [])
         }
 
-        # ✅ MERGE SCORES
+        # ===== MERGE SCORES =====
         for a in filtered:
+
             attempt = attempts.get(a["id"])
 
             if attempt:
@@ -239,32 +202,35 @@ def get_assignments(student_id: str):
         print("❌ ASSIGNMENT ERROR:", e)
         return []
 
-# ---------------- QUESTIONS ----------------
+
+# ================= QUESTIONS =================
 @app.get("/assessment/{assessment_id}")
 def get_assessment(assessment_id: str):
+
     try:
+
         cached = get_cached_data(assessment_id)
 
+        # ===== DOWNLOAD + PARSE =====
         if not cached:
+
             file_id = get_file_id(assessment_id)
 
-            print("📥 Downloading file:", file_id)
+            print("📥 Downloading:", file_id)
 
             file_stream = download_excel(file_id)
 
-            print("📄 File downloaded")
-
             cached = parse_excel(file_stream)
 
-            print("📊 Parsed questions:", cached)
-
             if not cached:
-                raise Exception("No questions parsed from Excel")
+                raise Exception("No questions parsed")
 
             set_cache(assessment_id, cached)
 
         safe = []
+
         for i, q in enumerate(cached):
+
             safe.append({
                 "id": str(i + 1),
                 "question": q.get("question", ""),
@@ -277,29 +243,36 @@ def get_assessment(assessment_id: str):
         return safe
 
     except Exception as e:
-        print("🔥 REAL ERROR:", str(e))   # ← IMPORTANT
-        raise HTTPException(500, f"Error: {str(e)}")
+        print("❌ ASSESSMENT ERROR:", e)
+        raise HTTPException(500, str(e))
 
 
-# ---------------- SUBMIT ----------------
+# ================= SUBMIT =================
 @app.post("/submit/{assessment_id}")
 def submit(assessment_id: str, data: Submission):
+
     try:
+
         questions = get_cached_data(assessment_id)
 
         if not questions:
+
             file_id = get_file_id(assessment_id)
+
             file_stream = download_excel(file_id)
+
             questions = parse_excel(file_stream)
+
             set_cache(assessment_id, questions)
 
-        questions = sorted(questions, key=lambda x: int(x["id"]))
-
-        existing = supabase.table("student_attempts") \
-            .select("id") \
-            .eq("student_id", data.student_id) \
-            .eq("assessment_id", assessment_id) \
+        # ===== CHECK ATTEMPT =====
+        existing = (
+            supabase.table("student_attempts")
+            .select("id")
+            .eq("student_id", data.student_id)
+            .eq("assessment_id", assessment_id)
             .execute()
+        )
 
         if existing.data:
             raise HTTPException(400, "Already attempted")
@@ -308,43 +281,64 @@ def submit(assessment_id: str, data: Submission):
         correct_answers = {}
 
         for q in questions:
+
             qid = str(q["id"])
-            correct = str(q.get("correct", "")).upper()
-            user = str(data.answers.get(qid, "")).upper()
+
+            correct = (
+                str(q.get("correct", ""))
+                .strip()
+                .upper()
+            )
+
+            user = (
+                str(data.answers.get(qid, ""))
+                .strip()
+                .upper()
+            )
 
             correct_answers[qid] = correct
+
             if user == correct:
                 score += 1
 
-        # student snapshot
-        stu = supabase.table("students") \
-            .select("department, year, semester") \
-            .eq("id", data.student_id) \
+        # ===== STUDENT SNAPSHOT =====
+        stu = (
+            supabase.table("students")
+            .select("department, year, semester")
+            .eq("id", data.student_id)
             .execute()
+        )
 
         student = stu.data[0]
 
-        ass = supabase.table("assessments") \
-            .select("subject") \
-            .eq("id", assessment_id) \
+        ass = (
+            supabase.table("assessments")
+            .select("subject")
+            .eq("id", assessment_id)
             .execute()
+        )
 
         assessment = ass.data[0]
 
-        supabase.table("student_attempts").upsert(
-            {
-                "student_id": data.student_id,
-                "assessment_id": assessment_id,
-                "department": student.get("department"),
-                "year": student.get("year"),
-                "semester": student.get("semester"),
-                "subject": assessment.get("subject"),
-                "answers_json": data.answers,
-                "score": score,
-                "total": len(questions)
-            },
-            on_conflict="student_id,assessment_id"
-        ).execute()
+        # ===== SAVE ATTEMPT =====
+        (
+            supabase.table("student_attempts")
+            .upsert(
+                {
+                    "student_id": data.student_id,
+                    "assessment_id": assessment_id,
+                    "department": student.get("department"),
+                    "year": student.get("year"),
+                    "semester": student.get("semester"),
+                    "subject": assessment.get("subject"),
+                    "answers_json": data.answers,
+                    "score": score,
+                    "total": len(questions)
+                },
+                on_conflict="student_id,assessment_id"
+            )
+            .execute()
+        )
 
         return {
             "score": score,
@@ -353,35 +347,60 @@ def submit(assessment_id: str, data: Submission):
         }
 
     except Exception as e:
-        print("SUBMIT ERROR:", e)
+        print("❌ SUBMIT ERROR:", e)
         raise HTTPException(500, "Submission failed")
 
 
-# ---------------- ATTEMPT ----------------
+# ================= ATTEMPT =================
 @app.get("/attempt/{assessment_id}/{student_id}")
 def get_attempt(assessment_id: str, student_id: str):
-    res = supabase.table("student_attempts") \
-        .select("*") \
-        .eq("assessment_id", assessment_id) \
-        .eq("student_id", student_id) \
-        .limit(1) \
-        .execute()
 
-    if not res.data:
+    try:
+
+        res = (
+            supabase.table("student_attempts")
+            .select("*")
+            .eq("assessment_id", assessment_id)
+            .eq("student_id", student_id)
+            .limit(1)
+            .execute()
+        )
+
+        if not res.data:
+            return None
+
+        attempt = res.data[0]
+
+        questions = get_cached_data(assessment_id)
+
+        if not questions:
+
+            file_id = get_file_id(assessment_id)
+
+            file_stream = download_excel(file_id)
+
+            questions = parse_excel(file_stream)
+
+            set_cache(assessment_id, questions)
+
+        correct_answers = {
+            str(q["id"]): str(q["correct"]).upper()
+            for q in questions
+        }
+
+        return {
+            **attempt,
+            "correctAnswers": correct_answers
+        }
+
+    except Exception as e:
+        print("❌ ATTEMPT ERROR:", e)
         return None
 
-    attempt = res.data[0]
 
-    questions = get_cached_data(assessment_id)
-    correct_answers = {
-        str(q["id"]): str(q["correct"]).upper()
-        for q in questions
-    }
-
-    return {**attempt, "correctAnswers": correct_answers}
-
-
-# ---------------- ROOT ----------------
+# ================= ROOT =================
 @app.get("/")
 def root():
-    return {"message": "LMS Backend Running 🚀"}
+    return {
+        "message": "LMS Backend Running 🚀"
+    }
