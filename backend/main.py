@@ -113,67 +113,130 @@ def get_file_id(assessment_id: str):
 @app.get("/assignments/{student_id}")
 def get_assignments(student_id: str):
     try:
+        # ================= GET STUDENT =================
         stu = supabase.table("students") \
-            .select("department, year, semester") \
+            .select("*") \
             .eq("id", student_id) \
             .execute()
 
         if not stu.data:
+            print("❌ Student not found")
             return []
 
         student = stu.data[0]
 
-        student_department = (student.get("department") or "").lower()
-        student_year = int(student.get("year")) if student.get("year") else None
+        # ✅ CLEAN VALUES
+        student_department = str(
+            student.get("department", "")
+        ).strip().lower()
+
+        student_year = int(
+            student.get("year", 0)
+        )
+
         student_semester = student.get("semester")
 
-        print("🔍 Student:", student)
+        print("🎓 STUDENT:")
+        print(
+            student_department,
+            student_year,
+            student_semester
+        )
 
-        # 🔥 GET ALL ASSIGNMENTS
-        ass_res = supabase.table("assessments").select("*").execute()
+        # ================= GET ALL ASSESSMENTS =================
+        ass_res = supabase.table("assessments") \
+            .select("*") \
+            .execute()
+
         all_assignments = ass_res.data or []
+
+        print(f"📚 TOTAL ASSESSMENTS: {len(all_assignments)}")
 
         filtered = []
 
+        # ================= FILTER =================
         for a in all_assignments:
-            dept = (a.get("department") or "").lower()
 
-            # ✅ FLEXIBLE MATCH (FIXED)
-            if not any(word in dept for word in student_department.split()):
-                continue
+            ass_department = str(
+                a.get("department", "")
+            ).strip().lower()
+
+            ass_year = a.get("year")
+            ass_semester = a.get("semester")
+
+            # ✅ SAFE YEAR
+            ass_year = int(ass_year) if ass_year else None
+
+            print("🔍 CHECKING:")
+            print(
+                ass_department,
+                ass_year,
+                ass_semester
+            )
+
+            # ✅ EXACT DEPARTMENT MATCH
+            department_match = (
+                ass_department == student_department
+            )
 
             # ✅ YEAR MATCH
-            if a.get("year") and int(a.get("year")) != student_year:
-                continue
+            year_match = (
+                ass_year == student_year
+            )
 
             # ✅ SEMESTER MATCH
-            if student_year != 1:
-                if a.get("semester") and a.get("semester") != student_semester:
-                    continue
+            # 1st year can ignore semester
+            if student_year == 1:
+                semester_match = True
+            else:
+                semester_match = (
+                    ass_semester is None
+                    or student_semester is None
+                    or int(ass_semester) == int(student_semester)
+                )
 
-            filtered.append(a)
+            print(
+                "MATCH:",
+                department_match,
+                year_match,
+                semester_match
+            )
 
-        print("✅ FINAL assignments:", filtered)
+            if (
+                department_match
+                and year_match
+                and semester_match
+            ):
+                filtered.append(a)
 
-        # 🔥 ATTEMPTS
+        print(f"✅ FILTERED ASSIGNMENTS: {len(filtered)}")
+
+        # ================= ATTEMPTS =================
         att_res = supabase.table("student_attempts") \
             .select("assessment_id, score, total") \
             .eq("student_id", student_id) \
             .execute()
 
-        attempts = {a["assessment_id"]: a for a in att_res.data}
+        attempts = {
+            a["assessment_id"]: a
+            for a in (att_res.data or [])
+        }
 
+        # ✅ MERGE SCORES
         for a in filtered:
             attempt = attempts.get(a["id"])
+
             if attempt:
-                a["score"] = f"{attempt['score']}/{attempt['total']}"
+                a["score"] = (
+                    f"{attempt['score']}/{attempt['total']}"
+                )
             else:
                 a["score"] = None
 
         return filtered
 
     except Exception as e:
-        print("ASSIGNMENT ERROR:", e)
+        print("❌ ASSIGNMENT ERROR:", e)
         return []
 
 # ---------------- QUESTIONS ----------------
