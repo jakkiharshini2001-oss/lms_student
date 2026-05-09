@@ -1,28 +1,53 @@
 import os
 import io
+import json
 
 from googleapiclient.discovery import build
 from googleapiclient.http import MediaIoBaseDownload
 from google.oauth2 import service_account
+from dotenv import load_dotenv
 
-SCOPES = ['https://www.googleapis.com/auth/drive.readonly']
+load_dotenv()
+
+SCOPES = ["https://www.googleapis.com/auth/drive.readonly"]
 
 
 def get_drive_service():
     try:
-        # ✅ Load credentials directly from file
-        BASE_DIR = os.path.dirname(os.path.abspath(__file__))
-        CREDENTIALS_PATH = os.path.join(BASE_DIR, "credentials.json")
+        google_credentials = os.getenv("GOOGLE_CREDENTIALS")
 
-        if not os.path.exists(CREDENTIALS_PATH):
-            raise Exception("credentials.json file not found")
+        if not google_credentials:
+            raise Exception("GOOGLE_CREDENTIALS environment variable not set")
 
-        creds = service_account.Credentials.from_service_account_file(
-            CREDENTIALS_PATH,
-            scopes=SCOPES
-        )
+        # ---------------------------------------------------
+        # CASE 1: Environment variable contains full JSON
+        # (Render deployment)
+        # ---------------------------------------------------
+        if google_credentials.strip().startswith("{"):
+            credentials_info = json.loads(google_credentials)
 
-        return build('drive', 'v3', credentials=creds)
+            creds = service_account.Credentials.from_service_account_info(
+                credentials_info,
+                scopes=SCOPES
+            )
+
+        # ---------------------------------------------------
+        # CASE 2: Environment variable contains filename
+        # (Local development)
+        # ---------------------------------------------------
+        else:
+            base_dir = os.path.dirname(os.path.abspath(__file__))
+            credentials_path = os.path.join(base_dir, google_credentials)
+
+            if not os.path.exists(credentials_path):
+                raise Exception(f"{google_credentials} file not found")
+
+            creds = service_account.Credentials.from_service_account_file(
+                credentials_path,
+                scopes=SCOPES
+            )
+
+        return build("drive", "v3", credentials=creds)
 
     except Exception as e:
         print("❌ DRIVE AUTH ERROR:", e)
@@ -33,26 +58,25 @@ def download_excel(file_id):
     try:
         service = get_drive_service()
 
-        # 🔍 Step 1: Check file type
+        # Get file metadata
         file = service.files().get(
             fileId=file_id,
             fields="mimeType"
         ).execute()
 
         mime_type = file.get("mimeType")
-
         print("📄 File MIME:", mime_type)
 
-        # 🔥 Step 2: Handle Google Sheet vs normal file
+        # Google Sheet → export as Excel
         if mime_type == "application/vnd.google-apps.spreadsheet":
             request = service.files().export_media(
                 fileId=file_id,
-                mimeType='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
+                mimeType="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
             )
         else:
             request = service.files().get_media(fileId=file_id)
 
-        # 🔽 Step 3: Download file
+        # Download
         fh = io.BytesIO()
         downloader = MediaIoBaseDownload(fh, request)
 
