@@ -1,4 +1,3 @@
-import json
 import os
 import io
 
@@ -11,16 +10,15 @@ SCOPES = ['https://www.googleapis.com/auth/drive.readonly']
 
 def get_drive_service():
     try:
-        # 🔥 Load from ENV instead of file
-        creds_json = os.getenv("GOOGLE_CREDENTIALS")
+        # ✅ Load credentials directly from file
+        BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+        CREDENTIALS_PATH = os.path.join(BASE_DIR, "credentials.json")
 
-        if not creds_json:
-            raise Exception("GOOGLE_CREDENTIALS not set in environment")
+        if not os.path.exists(CREDENTIALS_PATH):
+            raise Exception("credentials.json file not found")
 
-        creds_dict = json.loads(creds_json)
-
-        creds = service_account.Credentials.from_service_account_info(
-            creds_dict,
+        creds = service_account.Credentials.from_service_account_file(
+            CREDENTIALS_PATH,
             scopes=SCOPES
         )
 

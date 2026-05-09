@@ -1,37 +1,8 @@
 import { useState, useEffect } from 'react';
 import { supabase } from '../lib/supabase';
 
-/**
- * Parses the student's semester field into an integer.
- *
- * Student table stores semester in two possible formats:
- *   "2-2"  → year 2, semester 2  → returns 2
- *   "2"    → semester 2          → returns 2
- *   2      → semester 2          → returns 2
- *
- * Faculty table stores semester as a plain integer (1 or 2).
- * This function makes both sides compatible.
- */
-const parseSemesterInt = (semValue) => {
-  if (semValue === null || semValue === undefined || semValue === '') return null;
-  const str = String(semValue).trim();
-  // Format "2-2": take the part AFTER the dash (the semester number)
-  if (str.includes('-')) {
-    const parts = str.split('-');
-    return parseInt(parts[parts.length - 1], 10);
-  }
-  return parseInt(str, 10);
-};
 
-/**
- * Groups a flat list of videos and pdfs by subject, then by unit.
- * Returns:
- *   [{ name: subjectName, videos: [], pdfs: [], units: [{ name, videos, pdfs }] }]
- *
- * NOTE: Subject is purely a display label set by the faculty.
- * Students are matched to content only by department + year + semester.
- */
-const groupBySubjectAndUnit = (videos = [], pdfs = []) => {
+const groupBySubjectAndUnit = (videos = [], pdfs = [], assignments = []) => {
   const subjectMap = {};
 
   const addItem = (item, type) => {
@@ -39,23 +10,33 @@ const groupBySubjectAndUnit = (videos = [], pdfs = []) => {
     const unit = item.unit || 'General';
 
     if (!subjectMap[subject]) {
-      subjectMap[subject] = { name: subject, videos: [], pdfs: [], units: {} };
+      subjectMap[subject] = { name: subject, videos: [], pdfs: [], assignments: [], units: {} };
     }
     if (!subjectMap[subject].units[unit]) {
-      subjectMap[subject].units[unit] = { name: unit, videos: [], pdfs: [] };
+      subjectMap[subject].units[unit] = { name: unit, videos: [], pdfs: [], assignments: [] };
     }
 
     if (type === 'video') {
-      subjectMap[subject].videos.push(item);
-      subjectMap[subject].units[unit].videos.push(item);
-    } else {
-      subjectMap[subject].pdfs.push(item);
-      subjectMap[subject].units[unit].pdfs.push(item);
-    }
+
+  subjectMap[subject].videos.push(item);
+  subjectMap[subject].units[unit].videos.push(item);
+
+} else if (type === 'pdf') {
+
+  subjectMap[subject].pdfs.push(item);
+  subjectMap[subject].units[unit].pdfs.push(item);
+
+} else if (type === 'assignment') {
+
+  subjectMap[subject].assignments.push(item);
+  subjectMap[subject].units[unit].assignments.push(item);
+
+}
   };
 
   videos.forEach(v => addItem(v, 'video'));
   pdfs.forEach(p => addItem(p, 'pdf'));
+  assignments.forEach(a => addItem(a, 'assignment'));
 
   return Object.values(subjectMap).map(s => ({
     ...s,
@@ -78,6 +59,7 @@ export const useStudentMaterials = () => {
   const [subjects, setSubjects] = useState([]);
   const [allVideos, setAllVideos] = useState([]);
   const [allPdfs, setAllPdfs] = useState([]);
+  const [allAssignments, setAllAssignments] = useState([]);
   const [studentProfile, setStudentProfile] = useState(null);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState(null);
@@ -99,7 +81,7 @@ export const useStudentMaterials = () => {
 
         const dept = profile.department;
         const year = parseInt(profile.year, 10);
-        const sem  = parseSemesterInt(profile.semester);
+        const sem = parseInt(profile.semester, 10);
 
         console.log('📚 Student profile:', { dept, year, sem, rawSem: profile.semester });
 
@@ -107,7 +89,6 @@ export const useStudentMaterials = () => {
          * Fetch content for a table (videos / pdfs).
          * Match on: department + year only.
          *
-         * Semester is intentionally NOT filtered here — the student-facing
          * semester dropdown (Overview / MyMaterials) filters client-side so
          * students can browse any semester within their year.
          */
@@ -116,7 +97,6 @@ export const useStudentMaterials = () => {
             .from(table)
             .select('*')
             .eq('department', dept)
-            .eq('year', year)
             .order('subject')
             .order('unit')
             .order('created_at');
@@ -127,16 +107,25 @@ export const useStudentMaterials = () => {
           return data || [];
         };
 
-        const [videos, pdfs] = await Promise.all([
+        const [videos, pdfs, assignments] = await Promise.all([
           fetchContent('videos'),
           fetchContent('pdfs'),
+          fetchContent('assessments'),
         ]);
 
         if (!cancelled) {
           setStudentProfile(profile);
           setAllVideos(videos);
           setAllPdfs(pdfs);
-          setSubjects(groupBySubjectAndUnit(videos, pdfs));
+          setAllAssignments(assignments);
+
+          setSubjects(
+            groupBySubjectAndUnit(
+              videos,
+              pdfs,
+              assignments
+            )
+          );
         }
       } catch (err) {
         console.error('useStudentMaterials error:', err.message);
@@ -150,5 +139,5 @@ export const useStudentMaterials = () => {
     return () => { cancelled = true; };
   }, []);
 
-  return { subjects, allVideos, allPdfs, studentProfile, isLoading, error };
+  return { subjects, allVideos, allPdfs, allAssignments, studentProfile, isLoading, error };
 };

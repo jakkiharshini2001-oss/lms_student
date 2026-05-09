@@ -16,7 +16,7 @@ const SEMESTER_OPTIONS = [
 
 // ── Subject Card ─────────────────────────────────────────────────────────────
 const SubjectCard = ({ subject, index }) => {
-  const totalItems = subject.videos.length + subject.pdfs.length;
+  const totalItems = subject.videos.length + subject.pdfs.length +(subject.assignments?.length || 0);
   const colors = [
     { bg: 'from-blue-500 to-indigo-600', light: 'bg-blue-50 text-blue-600' },
     { bg: 'from-emerald-500 to-teal-600', light: 'bg-emerald-50 text-emerald-600' },
@@ -55,6 +55,9 @@ const SubjectCard = ({ subject, index }) => {
           <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg font-medium bg-slate-50 text-slate-600">
             <FileText className="w-3.5 h-3.5" />
             {subject.pdfs.length} PDFs
+          </div>
+          <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg font-medium bg-orange-50 text-orange-600">
+            📝 {subject.assignments?.length || 0} Assessments
           </div>
         </div>
 

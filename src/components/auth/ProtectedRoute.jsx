@@ -2,6 +2,7 @@ import { Navigate } from "react-router-dom";
 import { useEffect, useState } from "react";
 import { supabase } from "../../lib/supabase";
 
+
 const ProtectedRoute = ({ children }) => {
   const [user, setUser] = useState(undefined);
 

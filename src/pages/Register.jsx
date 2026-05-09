@@ -59,15 +59,10 @@ const Register = () => {
     const user = authData?.user;
     if (!user) throw new Error("User not created");
 
-    // ✅ 2. CONVERT SEMESTER STRING → INTEGER
-    let semesterNumber = 1;
-
-    if (formData.year === "1") {
-      semesterNumber = 1; // 1-1
-    } else {
-      const semPart = formData.semester.split("-")[1]; // "2-1" → "1"
-      semesterNumber = (parseInt(formData.year) - 1) * 2 + parseInt(semPart);
-    }
+   const semesterValue =
+  formData.year === "1"
+    ? 1
+    : parseInt(formData.semester.split("-")[1], 10);
 
     // 3. INSERT INTO students TABLE
     const { error: dbError } = await supabase.from("students").insert([
@@ -79,7 +74,7 @@ const Register = () => {
         course: formData.course,
         department: formData.department,
         year: parseInt(formData.year),
-        semester: semesterNumber, // ✅ FIXED
+        semester: semesterValue,
       },
     ]);
 
